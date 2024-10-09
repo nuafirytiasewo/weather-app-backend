@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Query
 from telegram_bot import send_telegram_notification
 from air_quality import get_city_by_coords, get_city_by_ip, get_air_quality_data
 from aiocache import cached
@@ -30,16 +30,14 @@ async def get_city(lat: float = None, lon: float = None, request: Request = None
         }
     }
 
-@app.post("/api/subscribe")
-async def subscribe(request: Request):
-    data = await request.json()
-
-    if 'telegram_id' not in data:
-        raise HTTPException(status_code=400, detail="telegram_id required")
-
-    city = data.get('city', "Астрахань")
-    air_quality = get_air_quality_data(city)
-
-    await send_telegram_notification(data['telegram_id'], city, air_quality)
+@app.get("/api/subscribe")
+async def subscribe(
+    telegram_id: str = Query(...),
+    city: str = Query(...),
+    coordinates: str = Query(...)
+):
+    # Ваш код для обработки подписки
+    # air_quality = get_air_quality_data(city)
+    await send_telegram_notification(telegram_id, city, coordinates)
 
     return {"message": "Subscription successful"}
