@@ -4,7 +4,7 @@ import os
 
 load_dotenv()
 
-OPENWEATHER_API_KEY = os.getenv('YOUR_OPENWEATHER_API_KEY')
+OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
 
 def get_city_by_coords(lat, lon):
     url = f"https://api.openweathermap.org/geo/1.0/reverse?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}"
