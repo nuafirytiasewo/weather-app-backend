@@ -5,23 +5,32 @@ from aiocache import cached
 
 app = FastAPI()
 
-@app.get("/api/get-city")
+@app.get("/api/get-city")  # Оставляем как GET
 @cached(ttl=360000)  # Кэшируем результат на 1 час
-async def get_city(request: Request):
-    # geo_data = await request.json()
+async def get_city(lat: float = None, lon: float = None, request: Request = None):
+    if lat is not None and lon is not None:
+        # Получаем город по координатам
+        city = await get_city_by_coords(lat, lon)
+    else:
+        # Получаем город по IP
+        client_ip = request.client.host
+        city, lat, lon = get_city_by_ip(client_ip)
+        
+        if not city:
+            city = "Астрахань"
+            lat = "46.377687" 
+            lon = "48.053186"
 
-    # if 'lat' in geo_data and 'lon' in geo_data:
-    #     city = get_city_by_coords(geo_data['lat'], geo_data['lon'])
-    # else:
-    #     client_ip = request.client.host
-    #     city = get_city_by_ip(client_ip)
+    # Возвращаем название города и координаты
+    return {
+        "city": city,
+        "coordinates": {
+            "lat": lat,
+            "lon": lon
+        }
+    }
 
-    #     if not city:
-    #         city = "Астрахань"
-    city = "Астрахань"
-    return {"city": city}
-
-@app.get("/api/subscribe")
+@app.post("/api/subscribe")
 async def subscribe(request: Request):
     data = await request.json()
 

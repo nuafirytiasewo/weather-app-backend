@@ -6,7 +6,7 @@ load_dotenv()
 
 OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
 
-def get_city_by_coords(lat, lon):
+async def get_city_by_coords(lat, lon):
     url = f"https://api.openweathermap.org/geo/1.0/reverse?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}"
     response = requests.get(url)
     data = response.json()
@@ -18,9 +18,22 @@ def get_city_by_ip(ip):
     url = f"https://ipinfo.io/{ip}/geo"
     response = requests.get(url)
     data = response.json()
+    
+    # Проверяем, есть ли поле city
     if "city" in data:
-        return data["city"]
-    return None
+        city = data["city"]
+    else:
+        city = None
+
+    # Проверяем, есть ли поле loc
+    loc = data.get("loc")
+    if loc:
+        # Разделяем координаты на широту и долготу
+        lat, lon = map(float, loc.split(","))
+    else:
+        lat, lon = None, None
+
+    return city, lat, lon
 
 def get_air_quality_data(city):
     # Пример получения данных о загрязнении воздуха
