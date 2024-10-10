@@ -1,10 +1,21 @@
 from fastapi import FastAPI, Request, HTTPException, Query
 from telegram_bot import send_telegram_notification
-from air_quality import get_city_by_coords, get_city_by_ip, get_air_quality_data
+from air_quality import get_city_by_coords, get_city_by_ip, get_air_pollution_data, get_air_pollution_forecast
 from aiocache import cached
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+# Разрешаем CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Разрешаем фронтенд адресу делать запросы
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешаем все методы (GET, POST, и т.д.)
+    allow_headers=["*"],  # Разрешаем все заголовки
+)
+
+#получить город
 @app.get("/api/get-city")  # Оставляем как GET
 @cached(ttl=360000)  # Кэшируем результат на 1 час
 async def get_city(lat: float = None, lon: float = None, request: Request = None):
@@ -30,13 +41,26 @@ async def get_city(lat: float = None, lon: float = None, request: Request = None
         }
     }
 
+#получить текущее качество воздуха
+@app.get("/api/get-pollution")
+async def get_pollution(lat: float, lon: float):
+    data = await get_air_pollution_data(lat, lon)
+    return data
+
+#получить прогноз качества воздуха на 5 дней
+@app.get("/api/get-forecast")
+async def get_forecast(lat: float, lon: float):
+    data = await get_air_pollution_forecast(lat, lon)
+    return data
+
+#отправить сообщение по 
 @app.get("/api/subscribe")
 async def subscribe(
     telegram_id: str = Query(...),
     city: str = Query(...),
     coordinates: str = Query(...)
 ):
-    # Ваш код для обработки подписки
+    
     # air_quality = get_air_quality_data(city)
     await send_telegram_notification(telegram_id, city, coordinates)
 
