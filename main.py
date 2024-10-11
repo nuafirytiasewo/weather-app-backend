@@ -1,8 +1,11 @@
-from fastapi import FastAPI, Request, HTTPException, Query
+from fastapi import FastAPI, Request, Query
 from telegram_bot import send_telegram_notification
 from air_quality import get_city_by_coords, get_city_by_ip, get_air_pollution_data, get_air_pollution_forecast
 from aiocache import cached
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.bot.telegram_bot import on_startup
+from scheduler import start_scheduler
 
 app = FastAPI()
 
@@ -65,3 +68,16 @@ async def subscribe(
     await send_telegram_notification(telegram_id, city, coordinates)
 
     return {"message": "Subscription successful"}
+
+@app.on_event("startup")
+async def startup_event():
+    await on_startup()
+    start_scheduler()
+
+@app.get("/api/geo")
+async def get_geo():
+    return {"lon": 12.34, "lat": 56.78}  # Пример, здесь должно быть получение реальных данных
+
+if __name__ == '__main__':
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
