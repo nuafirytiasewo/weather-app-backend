@@ -17,6 +17,10 @@ async def get_city_by_coords(lat, lon):
 
 #получаем город по ip
 def get_city_by_ip(ip):
+    if ":" in ip:
+        ip = ip[:ip.index(":")]
+
+    print(ip)
     url = f"https://ipinfo.io/{ip}/geo"
     response = requests.get(url)
     data = response.json()

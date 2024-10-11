@@ -24,7 +24,7 @@ async def get_city(lat: float = None, lon: float = None, request: Request = None
         city = await get_city_by_coords(lat, lon)
     else:
         client_ip = request.client.host
-        city, lat, lon = await get_city_by_ip(client_ip)
+        city, lat, lon = get_city_by_ip(client_ip)
         
         if not city:
             city = "Астрахань"
