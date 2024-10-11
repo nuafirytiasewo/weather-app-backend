@@ -6,6 +6,7 @@ import asyncio
 import logging
 from dotenv import load_dotenv
 import os
+from geopy.geocoders import Nominatim
 
 load_dotenv()
 
@@ -25,18 +26,28 @@ dp = Dispatcher(storage=storage)  # Передаем storage в диспетче
 @dp.message(Command("start"))
 async def start(message: Message):
     logging.info(f"Получена команда /start от {message.from_user.id}")
+    logging.info(f"А что именно передалось {message.text}")
+    
+    # Проверяем, что текст команды содержит необходимые параметры
+    if message.text and "lon" in message.text and "lat" in message.text:
+        # Извлекаем координаты с помощью регулярных выражений
+        lon = message.text.split("lon")[1].split("lat")[0]  # Извлечение долготы
+        lat = message.text.split("lat")[1]  # Извлечение широты
 
-    if message.text and "start=" in message.text:
-        params = message.text.split("start=")[-1].split("&")
-        lon = params[0].split("=")[-1]
-        lat = params[1].split("=")[-1]
-        city = params[2].split("=")[-1]
+        # Удаляем возможные лишние символы, такие как "-" перед значением
+        lon = lon.replace("-", ".")  # Заменяем "-" на "." для долготы
+        lat = lat.replace("-", ".")  # Заменяем "-" на "." для широты
+
+        # Используем geocoder для определения города
+        geolocator = Nominatim(user_agent="geoapiExercises")
+        location = geolocator.reverse(f"{lat}, {lon}")
+        city = location.raw['address'].get('city', 'Неизвестно')
 
         # Здесь должен быть код сохранения в БД
 
         await message.answer(f"Спасибо за подписку на рассылку!\nГород: {city}\nКоординаты: {lon}, {lat}")
     else:
-        await message.answer("Пожалуйста, укажите координаты.")
+        await message.answer("Пожалуйста, укажите координаты в формате: /start lon36-19lat51-73")
 
 # Функция отправки уведомлений
 async def send_notification():
