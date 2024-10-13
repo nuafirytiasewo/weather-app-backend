@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Query
-from app.bot.telegram_bot import send_telegram_notification, start_bot
+from app.bot.telegram_bot import start_bot #, send_telegram_notification, 
 from air_quality import get_city_by_coords, get_city_by_ip, get_air_pollution_data, get_air_pollution_forecast
 from aiocache import cached
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,6 +51,7 @@ async def get_forecast(lat: float, lon: float):
     data = await get_air_pollution_forecast(lat, lon)
     return data
 
+# запускает бота
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(start_bot())

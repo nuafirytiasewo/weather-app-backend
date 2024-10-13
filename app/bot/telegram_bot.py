@@ -6,7 +6,8 @@ import asyncio
 import logging
 from dotenv import load_dotenv
 import os
-from opencage.geocoder import OpenCageGeocode
+from app.db.database import get_db
+import app.db.crud as crud
 
 
 load_dotenv()
@@ -35,23 +36,30 @@ async def start(message: Message):
     
     # Проверяем, что текст команды содержит необходимые параметры
     if message.text and "lon" in message.text and "lat" in message.text:
-        try:
-            # Извлекаем координаты с помощью регулярных выражений или разбиения строки
-            lon = message.text.split("lon")[1].split("lat")[0].strip()
-            lat = message.text.split("lat")[1].strip()
+        lon = message.text.split("lon")[1].split("lat")[0].strip()
+        lat = message.text.split("lat")[1].strip()
 
-            # Удаляем возможные лишние символы, такие как "-" перед значением
-            lon = lon.replace("-", ".")  # Заменяем "-" на "." для долготы
-            lat = lat.replace("-", ".")  # Заменяем "-" на "." для широты
+        lon = float(lon.replace("-", "."))
+        lat = float(lat.replace("-", "."))
             
-            # Используем OpenCage Data для обратного геокодирования
-            result = geocoder.reverse_geocode(float(lat), float(lon))
+        try:
+            # Вместо геокодера теперь по дефолту астрахань
+            # Потому что блядский геокодер ломал систему пидор
+            # И блядский chatgpt тоже хуйню посоветовал
+            result = "AssTrahAn" 
             
             if result and len(result):
-                # Получаем название города из результата
-                city = result[0]['components'].get('city', 'Неизвестно')
+                city = result #[0]['components'].get('city', 'Неизвестно')
 
-                # Здесь можно добавить код для сохранения в БД, если необходимо
+                with get_db() as db:
+                    telegram_id = message.from_user.id 
+                    crud.create_subscription(
+                        db, 
+                        telegram_id=telegram_id, 
+                        city=city, 
+                        lon=lon, 
+                        lat=lat
+                    )
                 await message.answer(f"Спасибо за подписку на рассылку!\nГород: {city}\nКоординаты: {lon}, {lat}")
             else:
                 await message.answer("Не удалось определить местоположение, попробуйте снова.")
