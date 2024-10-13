@@ -1,36 +1,63 @@
-from fastapi import FastAPI, Request, HTTPException
-from telegram_bot import send_telegram_notification
-from air_quality import get_city_by_coords, get_city_by_ip, get_air_quality_data
+from fastapi import FastAPI, Request, Query
+from app.bot.telegram_bot import send_telegram_notification, start_bot
+from air_quality import get_city_by_coords, get_city_by_ip, get_air_pollution_data, get_air_pollution_forecast
 from aiocache import cached
+from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+import uvicorn
 
 app = FastAPI()
 
-@app.post("/api/get-city")
-@cached(ttl=3600)  # Кэшируем результат на 1 час
-async def get_city(request: Request):
-    geo_data = await request.json()
+# Разрешаем CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Разрешаем фронтенд адресу делать запросы
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешаем все методы (GET, POST и т.д.)
+    allow_headers=["*"],  # Разрешаем все заголовки
+)
 
-    if 'lat' in geo_data and 'lon' in geo_data:
-        city = get_city_by_coords(geo_data['lat'], geo_data['lon'])
+# Получить город
+@app.get("/api/get-city")
+async def get_city(lat: float = None, lon: float = None, request: Request = None):
+    if lat is not None and lon is not None:
+        city = await get_city_by_coords(lat, lon)
     else:
         client_ip = request.client.host
-        city = get_city_by_ip(client_ip)
-
+        city, lat, lon = get_city_by_ip(client_ip)
+        
         if not city:
             city = "Астрахань"
+            lat = "46.377687" 
+            lon = "48.053186"
 
-    return {"city": city}
+    return {
+        "city": city,
+        "coordinates": {
+            "lat": lat,
+            "lon": lon
+        }
+    }
 
-@app.post("/api/subscribe")
-async def subscribe(request: Request):
-    data = await request.json()
+# Получить текущее качество воздуха
+@app.get("/api/get-pollution")
+async def get_pollution(lat: float, lon: float):
+    data = await get_air_pollution_data(lat, lon)
+    return data
 
-    if 'telegram_id' not in data:
-        raise HTTPException(status_code=400, detail="telegram_id required")
+# Получить прогноз качества воздуха на 5 дней
+@app.get("/api/get-forecast")
+async def get_forecast(lat: float, lon: float):
+    data = await get_air_pollution_forecast(lat, lon)
+    return data
 
-    city = data.get('city', "Астрахань")
-    air_quality = get_air_quality_data(city)
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(start_bot())
 
-    await send_telegram_notification(data['telegram_id'], city, air_quality)
+@app.get("/api/geo")
+async def get_geo():
+    return {"lon": 12.34, "lat": 56.78}  # Пример, здесь должно быть получение реальных данных
 
-    return {"message": "Subscription successful"}
+if __name__ == '__main__':
+    uvicorn.run(app, host='0.0.0.0', port=8000)
