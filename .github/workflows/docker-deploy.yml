@@ -24,5 +24,5 @@ jobs:
           uses: docker/build-push-action@v4
           with:
             push: true
-            context: ./backend/
+            context: .
             tags: ${{ secrets.DOCKER_USERNAME }}/air-quality-app:latest
