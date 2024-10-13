@@ -1,4 +1,4 @@
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -6,17 +6,22 @@ import asyncio
 import logging
 from dotenv import load_dotenv
 import os
-from geopy.geocoders import Nominatim
+from opencage.geocoder import OpenCageGeocode
+
 
 load_dotenv()
 
-API_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+
+# Задаем API ключ для OpenCage
+GEOCODING_API_KEY = os.getenv('GEOCODING_API_KEY')
+geocoder = OpenCageGeocode(GEOCODING_API_KEY)
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
 
 # Создание экземпляра бота
-bot = Bot(token=API_TOKEN)
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 storage = MemoryStorage()
 
 # Создание диспетчера
@@ -30,24 +35,33 @@ async def start(message: Message):
     
     # Проверяем, что текст команды содержит необходимые параметры
     if message.text and "lon" in message.text and "lat" in message.text:
-        # Извлекаем координаты с помощью регулярных выражений
-        lon = message.text.split("lon")[1].split("lat")[0]  # Извлечение долготы
-        lat = message.text.split("lat")[1]  # Извлечение широты
+        try:
+            # Извлекаем координаты с помощью регулярных выражений или разбиения строки
+            lon = message.text.split("lon")[1].split("lat")[0].strip()
+            lat = message.text.split("lat")[1].strip()
 
-        # Удаляем возможные лишние символы, такие как "-" перед значением
-        lon = lon.replace("-", ".")  # Заменяем "-" на "." для долготы
-        lat = lat.replace("-", ".")  # Заменяем "-" на "." для широты
+            # Удаляем возможные лишние символы, такие как "-" перед значением
+            lon = lon.replace("-", ".")  # Заменяем "-" на "." для долготы
+            lat = lat.replace("-", ".")  # Заменяем "-" на "." для широты
+            
+            # Используем OpenCage Data для обратного геокодирования
+            result = geocoder.reverse_geocode(float(lat), float(lon))
+            
+            if result and len(result):
+                # Получаем название города из результата
+                city = result[0]['components'].get('city', 'Неизвестно')
 
-        # Используем geocoder для определения города
-        geolocator = Nominatim(user_agent="geoapiExercises")
-        location = geolocator.reverse(f"{lat}, {lon}")
-        city = location.raw['address'].get('city', 'Неизвестно')
-
-        # Здесь должен быть код сохранения в БД
-
-        await message.answer(f"Спасибо за подписку на рассылку!\nГород: {city}\nКоординаты: {lon}, {lat}")
+                # Здесь можно добавить код для сохранения в БД, если необходимо
+                await message.answer(f"Спасибо за подписку на рассылку!\nГород: {city}\nКоординаты: {lon}, {lat}")
+            else:
+                await message.answer("Не удалось определить местоположение, попробуйте снова.")
+        
+        except Exception as e:
+            logging.error(f"Произошла ошибка: {e}")
+            await message.answer("Произошла ошибка при обработке координат. Пожалуйста, проверьте формат и попробуйте снова.")
+    
     else:
-        await message.answer("Пожалуйста, укажите координаты в формате: /start lon36-19lat51-73")
+        await message.answer("Пожалуйста, укажите координаты в формате: /start lon36.19lat51.73")
 
 # Функция отправки уведомлений
 async def send_notification():
