@@ -8,15 +8,11 @@ from dotenv import load_dotenv
 import os
 from app.db.database import get_db
 import app.db.crud as crud
-
+from air_quality import get_city_by_coords
 
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-
-# Задаем API ключ для OpenCage
-GEOCODING_API_KEY = os.getenv('GEOCODING_API_KEY')
-geocoder = OpenCageGeocode(GEOCODING_API_KEY)
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
@@ -36,34 +32,34 @@ async def start(message: Message):
     
     # Проверяем, что текст команды содержит необходимые параметры
     if message.text and "lon" in message.text and "lat" in message.text:
-        lon = message.text.split("lon")[1].split("lat")[0].strip()
-        lat = message.text.split("lat")[1].strip()
-
-        lon = float(lon.replace("-", "."))
-        lat = float(lat.replace("-", "."))
-            
         try:
-            # Вместо геокодера теперь по дефолту астрахань
-            # Потому что блядский геокодер ломал систему пидор
-            # И блядский chatgpt тоже хуйню посоветовал
-            result = "AssTrahAn" 
-            
-            if result and len(result):
-                city = result #[0]['components'].get('city', 'Неизвестно')
+            # Извлекаем координаты из сообщения
+            lon = message.text.split("lon")[1].split("lat")[0].strip()
+            lat = message.text.split("lat")[1].strip()
 
-                with get_db() as db:
-                    telegram_id = message.from_user.id 
-                    crud.create_subscription(
-                        db, 
-                        telegram_id=telegram_id, 
-                        city=city, 
-                        lon=lon, 
-                        lat=lat
-                    )
-                await message.answer(f"Спасибо за подписку на рассылку!\nГород: {city}\nКоординаты: {lon}, {lat}")
-            else:
-                await message.answer("Не удалось определить местоположение, попробуйте снова.")
-        
+            lon = float(lon.replace("-", "."))  # Преобразуем строку в float
+            lat = float(lat.replace("-", "."))
+
+            # Вместо геокодера по умолчанию город Астрахань - исправлено
+            city = await get_city_by_coords(lat, lon)
+
+            with get_db() as db:
+                telegram_id = message.from_user.id
+                # Используем функцию create_or_update_subscription
+                crud.create_or_update_subscription(
+                    db,
+                    telegram_id=telegram_id,
+                    city=city,
+                    lon=lon,
+                    lat=lat
+                )
+
+            await message.answer(f"Спасибо за подписку на рассылку!\nГород: {city}\nКоординаты: {lon}, {lat}")
+
+        except ValueError as e:
+            logging.error(f"Ошибка: {e}")
+            await message.answer(f"Подписка уже существует. Ваши данные были обновлены.\nГород: {city}\nКоординаты: {lon}, {lat}")
+
         except Exception as e:
             logging.error(f"Произошла ошибка: {e}")
             await message.answer("Произошла ошибка при обработке координат. Пожалуйста, проверьте формат и попробуйте снова.")

@@ -10,6 +10,28 @@ def create_subscription(db: Session, telegram_id: int, city: str, lon: float, la
     db.refresh(new_subscription)
     return new_subscription
 
+# Create or Update
+def create_or_update_subscription(db: Session, telegram_id: int, city: str, lon: float, lat: float) -> Subscription:
+    # Проверяем, существует ли уже запись с таким telegram_id
+    existing_subscription = db.query(Subscription).filter(Subscription.telegram_id == telegram_id).first()
+    
+    if existing_subscription:
+        # Обновляем существующую запись
+        existing_subscription.city = city
+        existing_subscription.lon = lon
+        existing_subscription.lat = lat
+        db.commit()
+        db.refresh(existing_subscription)
+        return existing_subscription
+    
+    # Если подписки нет, создаем новую
+    new_subscription = Subscription(telegram_id=telegram_id, city=city, lon=lon, lat=lat)
+    db.add(new_subscription)
+    db.commit()
+    db.refresh(new_subscription)
+    return new_subscription
+
+
 # Read (Получить один по telegram_id)
 def get_subscription(db: Session, telegram_id: int) -> Subscription:
     return db.query(Subscription).filter(Subscription.telegram_id == telegram_id).first()
