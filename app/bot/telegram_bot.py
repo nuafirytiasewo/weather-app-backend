@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import os
 from app.db.database import get_db
 import app.db.crud as crud
-from air_quality import get_city_by_coords
+from air_quality import get_city_by_coords, get_air_pollution_data
 
 load_dotenv()
 
@@ -68,39 +68,43 @@ async def start(message: Message):
         await message.answer("Пожалуйста, укажите координаты в формате: /start lon36.19lat51.73")
 
 # Функция отправки уведомлений
-async def send_notification():
-    # Логика пробежки по базе данных и проверки условий загрязнения
-    # Например, каждый полчаса отправляем уведомления
+async def send_notifications():
+    logging.info("Функция send_notifications запущена")
     while True:
-        # Здесь должна быть выборка пользователей из БД
-        users = []  # Пример пустого списка, замените на вашу выборку
-        
-        for user in users:
-            user_id = user["user_id"]
-            city = user["city"]
-            # Пример проверки качества воздуха
-            await bot.send_message(user_id, f"Внимание! В городе {city} превышен уровень загрязнений!")
-        
-        await asyncio.sleep(1800)  # Ожидаем 30 минут перед следующей проверкой
+        try:
+            # Логика пробежки по базе данных и проверки условий загрязнения
+            with get_db() as db:
+                users = crud.get_all_subscriptions(db)  # Получаем всех подписчиков
+                logging.info(f"Получено {len(users)} подписчиков")
+                for user in users:
+                    user_id = user.telegram_id
+                    city = user.city
+                    lon = user.lon
+                    lat = user.lat
 
-# Хэндлер для остановки уведомлений
+                    await bot.send_message(user_id, f"Внимание! В городе {city} превышен уровень загрязнения!")
+                    # Получаем данные о качестве воздуха
+                    air_data = await get_air_pollution_data(lat, lon)
+
+                    # Проверяем, если уровень загрязнения превышает допустимые нормы
+                    # if air_data and air_data['list'][0]['main']['aqi'] > 2:  # Пример проверки
+                    # await bot.send_message(user_id, f"Внимание! В городе {city} превышен уровень загрязнения!")
+        except Exception as e:
+            logging.error(f"Ошибка в функции отправки уведомлений: {e}")
+        await asyncio.sleep(10)  # Ожидаем 30 минут перед следующей проверкой
+
+# Хэндлер команды /stop
 @dp.message(Command("stop"))
-async def stop_notification(message: Message):
-    user_id = message.from_user.id
-    # Логика удаления записи пользователя из базы
-    await message.answer("Вы отписались от рассылки уведомлений.")
-
-# Функция отправки уведомлений
-async def send_telegram_notification(telegram_id: str, city: str, coordinates: str):
-    await bot.send_message(telegram_id, f"Вы подписались на уведомления о загрязнении воздуха в городе {city}.\nКоординаты: {coordinates}")
+async def stop(message: Message):
+    with get_db() as db:
+        success = crud.delete_subscription(db, telegram_id=message.from_user.id)
+        if success:
+            await message.answer("Вы отписались от уведомлений.")
+        else:
+            await message.answer("Вы не были подписаны на уведомления.")
 
 # Запуск бота
 async def start_bot():
     logging.info("Запуск бота...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)  # Передаем bot в start_polling
-
-# Функция on_startup для импорта в main.py
-async def on_startup():
-    logging.info("Бот запущен и готов к работе!")
-    asyncio.create_task(send_notification())  # Запускаем функцию отправки уведомлений

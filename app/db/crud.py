@@ -40,6 +40,10 @@ def get_subscription(db: Session, telegram_id: int) -> Subscription:
 def get_subscriptions(db: Session, skip: int = 0, limit: int = 100) -> list[Subscription]:
     return db.query(Subscription).offset(skip).limit(limit).all()
 
+# Добавляем функцию для получения всех 
+def get_all_subscriptions(db: Session) -> list[Subscription]:
+    return db.query(Subscription).all()
+
 # Update
 def update_subscription(db: Session, telegram_id: int, city: str = None, lon: float = None, lat: float = None) -> Subscription:
     subscription = db.query(Subscription).filter(Subscription.telegram_id == telegram_id).first()
