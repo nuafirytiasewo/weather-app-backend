@@ -9,3 +9,4 @@ class Subscription(Base):
     city = Column(String, nullable=False)
     lon = Column(Float, nullable=False)
     lat = Column(Float, nullable=False)
+    current_aqi = Column(Integer, nullable=True)

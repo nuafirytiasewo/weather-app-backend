@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import os
 from app.db.database import get_db
 import app.db.crud as crud
-from air_quality import get_city_by_coords, get_air_pollution_data
+from air_quality import get_city_by_coords, get_air_pollution_data, get_air_pollution_forecast
 
 load_dotenv()
 
@@ -43,6 +43,10 @@ async def start(message: Message):
             # Вместо геокодера по умолчанию город Астрахань - исправлено
             city = await get_city_by_coords(lat, lon)
 
+            # Получаем текущие данные о качестве воздуха
+            air_data = await get_air_pollution_data(lat, lon)
+            current_aqi = air_data['list'][0]['main']['aqi']
+            
             with get_db() as db:
                 telegram_id = message.from_user.id
                 # Используем функцию create_or_update_subscription
@@ -51,7 +55,9 @@ async def start(message: Message):
                     telegram_id=telegram_id,
                     city=city,
                     lon=lon,
-                    lat=lat
+                    lat=lat,
+                    current_aqi=current_aqi
+                    
                 )
 
             await message.answer(f"Спасибо за подписку на рассылку!\nГород: {city}\nКоординаты: {lon}, {lat}")
@@ -81,17 +87,42 @@ async def send_notifications():
                     city = user.city
                     lon = user.lon
                     lat = user.lat
+                    previous_aqi = user.current_aqi  # Получаем предыдущий AQI
 
-                    await bot.send_message(user_id, f"Внимание! В городе {city} превышен уровень загрязнения!")
-                    # Получаем данные о качестве воздуха
+                    # Получаем текущие данные о качестве воздуха
                     air_data = await get_air_pollution_data(lat, lon)
+                    current_aqi = air_data['list'][0]['main']['aqi']
 
-                    # Проверяем, если уровень загрязнения превышает допустимые нормы
-                    # if air_data and air_data['list'][0]['main']['aqi'] > 2:  # Пример проверки
-                    # await bot.send_message(user_id, f"Внимание! В городе {city} превышен уровень загрязнения!")
+                    # Если AQI изменился, отправляем уведомление
+                    if previous_aqi and current_aqi != previous_aqi:
+                        if current_aqi > previous_aqi:
+                            trend = "повышение"
+                        else:
+                            trend = "понижение"
+                        await bot.send_message(user_id, f"Внимание! В городе {city} наблюдается {trend} загрязнения. Текущий AQI: {current_aqi}")
+
+                        # Обновляем текущий AQI в базе данных
+                        crud.update_user_aqi(db, user_id, current_aqi)
+
+                    # Получаем прогноз загрязнения на ближайшие 6 часов
+                    forecast_data = await get_air_pollution_forecast(lat, lon)
+                    forecast_aqi = [f['main']['aqi'] for f in forecast_data['list'][:6]]  # Прогноз на 6 часов
+
+                    # Проверяем на значительное изменение AQI
+                    for i, forecast in enumerate(forecast_aqi):
+                        if abs(forecast - current_aqi) >= 2:  # Изменение на 2 или более пунктов
+                            if forecast > current_aqi:
+                                trend = "ухудшение"
+                            else:
+                                trend = "улучшение"
+                            hours = (i + 1) * 1  # Час прогноза (от 1 до 6)
+                            await bot.send_message(user_id, f"Внимание! Через {hours} часов ожидается {trend} качества воздуха в городе {city}. Прогнозируемый AQI: {forecast}")
+                            break
+                        
         except Exception as e:
             logging.error(f"Ошибка в функции отправки уведомлений: {e}")
-        await asyncio.sleep(10)  # Ожидаем 30 минут перед следующей проверкой
+        await asyncio.sleep(3)  # Ожидаем 30 минут перед следующей проверкой
+
 
 # Хэндлер команды /stop
 @dp.message(Command("stop"))

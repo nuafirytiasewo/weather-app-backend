@@ -3,15 +3,15 @@ from sqlalchemy.orm import Session
 from app.db.models import Subscription
 
 # Create
-def create_subscription(db: Session, telegram_id: int, city: str, lon: float, lat: float) -> Subscription:
-    new_subscription = Subscription(telegram_id=telegram_id, city=city, lon=lon, lat=lat)
+def create_subscription(db: Session, telegram_id: int, city: str, lon: float, lat: float, current_aqi: int) -> Subscription:
+    new_subscription = Subscription(telegram_id=telegram_id, city=city, lon=lon, lat=lat, current_aqi=current_aqi)
     db.add(new_subscription)
     db.commit()
     db.refresh(new_subscription)
     return new_subscription
 
 # Create or Update
-def create_or_update_subscription(db: Session, telegram_id: int, city: str, lon: float, lat: float) -> Subscription:
+def create_or_update_subscription(db: Session, telegram_id: int, city: str, lon: float, lat: float, current_aqi: int) -> Subscription:
     # Проверяем, существует ли уже запись с таким telegram_id
     existing_subscription = db.query(Subscription).filter(Subscription.telegram_id == telegram_id).first()
     
@@ -20,12 +20,13 @@ def create_or_update_subscription(db: Session, telegram_id: int, city: str, lon:
         existing_subscription.city = city
         existing_subscription.lon = lon
         existing_subscription.lat = lat
+        existing_subscription.current_aqi = current_aqi
         db.commit()
         db.refresh(existing_subscription)
         return existing_subscription
     
     # Если подписки нет, создаем новую
-    new_subscription = Subscription(telegram_id=telegram_id, city=city, lon=lon, lat=lat)
+    new_subscription = Subscription(telegram_id=telegram_id, city=city, lon=lon, lat=lat, current_aqi=current_aqi)
     db.add(new_subscription)
     db.commit()
     db.refresh(new_subscription)
