@@ -6,19 +6,17 @@ import asyncio
 import logging
 from dotenv import load_dotenv
 import os
-from opencage.geocoder import OpenCageGeocode
-
+from app.db.database import get_db
+import app.db.crud as crud
+from air_quality import get_city_by_coords, get_air_pollution_data, get_air_pollution_forecast
+import app.bot.messages as messages
 
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
-# Задаем API ключ для OpenCage
-GEOCODING_API_KEY = os.getenv('GEOCODING_API_KEY')
-geocoder = OpenCageGeocode(GEOCODING_API_KEY)
-
 # Логирование
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 
 # Создание экземпляра бота
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -30,73 +28,110 @@ dp = Dispatcher(storage=storage)  # Передаем storage в диспетче
 # Хэндлер команды /start с параметрами
 @dp.message(Command("start"))
 async def start(message: Message):
-    logging.info(f"Получена команда /start от {message.from_user.id}")
-    logging.info(f"А что именно передалось {message.text}")
+    logging.info(f"[TELEGRAM BOT] /start от {message.from_user.id} message: {message.text}")
     
     # Проверяем, что текст команды содержит необходимые параметры
     if message.text and "lon" in message.text and "lat" in message.text:
         try:
-            # Извлекаем координаты с помощью регулярных выражений или разбиения строки
+            # Извлекаем координаты из сообщения
             lon = message.text.split("lon")[1].split("lat")[0].strip()
             lat = message.text.split("lat")[1].strip()
 
-            # Удаляем возможные лишние символы, такие как "-" перед значением
-            lon = lon.replace("-", ".")  # Заменяем "-" на "." для долготы
-            lat = lat.replace("-", ".")  # Заменяем "-" на "." для широты
-            
-            # Используем OpenCage Data для обратного геокодирования
-            result = geocoder.reverse_geocode(float(lat), float(lon))
-            
-            if result and len(result):
-                # Получаем название города из результата
-                city = result[0]['components'].get('city', 'Неизвестно')
+            lon = float(lon.replace("-", "."))
+            lat = float(lat.replace("-", "."))
 
-                # Здесь можно добавить код для сохранения в БД, если необходимо
-                await message.answer(f"Спасибо за подписку на рассылку!\nГород: {city}\nКоординаты: {lon}, {lat}")
-            else:
-                await message.answer("Не удалось определить местоположение, попробуйте снова.")
-        
+            # Вместо геокодера по умолчанию город Астрахань - исправлено
+            city = await get_city_by_coords(lat, lon)
+
+            # Получаем текущие данные о качестве воздуха
+            air_data = await get_air_pollution_data(lat, lon)
+            current_aqi = air_data['list'][0]['main']['aqi']
+            
+            with get_db() as db:
+                telegram_id = message.from_user.id
+                # Используем функцию create_or_update_subscription
+                crud.create_or_update_subscription(
+                    db,
+                    telegram_id=telegram_id,
+                    city=city,
+                    lon=lon,
+                    lat=lat,
+                    current_aqi=current_aqi
+                    
+                )
+
+            await message.answer(messages.MESSAGE_SAVE_SUBSCRIPTION + f"{city}")
+
         except Exception as e:
             logging.error(f"Произошла ошибка: {e}")
-            await message.answer("Произошла ошибка при обработке координат. Пожалуйста, проверьте формат и попробуйте снова.")
+            await message.answer(messages.MESSAGE_START_ERROR)
     
     else:
-        await message.answer("Пожалуйста, укажите координаты в формате: /start lon36.19lat51.73")
+        await message.answer(messages.MESSAGE_COORDINATES_NOT_PROVIDED)
 
 # Функция отправки уведомлений
-async def send_notification():
-    # Логика пробежки по базе данных и проверки условий загрязнения
-    # Например, каждый полчаса отправляем уведомления
+async def send_notifications():
+    logging.info("Функция send_notifications запущена")
     while True:
-        # Здесь должна быть выборка пользователей из БД
-        users = []  # Пример пустого списка, замените на вашу выборку
-        
-        for user in users:
-            user_id = user["user_id"]
-            city = user["city"]
-            # Пример проверки качества воздуха
-            await bot.send_message(user_id, f"Внимание! В городе {city} превышен уровень загрязнений!")
-        
-        await asyncio.sleep(1800)  # Ожидаем 30 минут перед следующей проверкой
+        try:
+            # Логика пробежки по базе данных и проверки условий загрязнения
+            with get_db() as db:
+                users = crud.get_all_subscriptions(db)  # Получаем всех подписчиков
+                logging.info(f"Получено {len(users)} подписчиков")
+                for user in users:
+                    user_id = user.telegram_id
+                    city = user.city
+                    lon = user.lon
+                    lat = user.lat
+                    previous_aqi = user.current_aqi  # Получаем предыдущий AQI
 
-# Хэндлер для остановки уведомлений
+                    # Получаем текущие данные о качестве воздуха
+                    air_data = await get_air_pollution_data(lat, lon)
+                    current_aqi = air_data['list'][0]['main']['aqi']
+
+                    # Если AQI изменился, отправляем уведомление
+                    if previous_aqi and current_aqi != previous_aqi:
+                        if current_aqi > previous_aqi:
+                            trend = "повышение"
+                        else:
+                            trend = "понижение"
+                        await bot.send_message(user_id, f"Внимание! В городе {city} наблюдается {trend} загрязнения. Текущий AQI: {current_aqi}")
+
+                        # Обновляем текущий AQI в базе данных
+                        crud.update_user_aqi(db, user_id, current_aqi)
+
+                    # Получаем прогноз загрязнения на ближайшие 6 часов
+                    forecast_data = await get_air_pollution_forecast(lat, lon)
+                    forecast_aqi = [f['main']['aqi'] for f in forecast_data['list'][:6]]  # Прогноз на 6 часов
+
+                    # Проверяем на значительное изменение AQI
+                    for i, forecast in enumerate(forecast_aqi):
+                        if abs(forecast - current_aqi) >= 2:  # Изменение на 2 или более пунктов
+                            if forecast > current_aqi:
+                                trend = "ухудшение"
+                            else:
+                                trend = "улучшение"
+                            hours = (i + 1) * 1  # Час прогноза (от 1 до 6)
+                            await bot.send_message(user_id, f"Внимание! Через {hours} часов ожидается {trend} качества воздуха в городе {city}. Прогнозируемый AQI: {forecast}")
+                            break
+                        
+        except Exception as e:
+            logging.error(f"Ошибка в функции отправки уведомлений: {e}")
+        await asyncio.sleep(3)  # Ожидаем 30 минут перед следующей проверкой
+
+
+# Хэндлер команды /stop
 @dp.message(Command("stop"))
-async def stop_notification(message: Message):
-    user_id = message.from_user.id
-    # Логика удаления записи пользователя из базы
-    await message.answer("Вы отписались от рассылки уведомлений.")
-
-# Функция отправки уведомлений
-async def send_telegram_notification(telegram_id: str, city: str, coordinates: str):
-    await bot.send_message(telegram_id, f"Вы подписались на уведомления о загрязнении воздуха в городе {city}.\nКоординаты: {coordinates}")
+async def stop(message: Message):
+    with get_db() as db:
+        success = crud.delete_subscription(db, telegram_id=message.from_user.id)
+        if success:
+            await message.answer("Вы отписались от уведомлений.")
+        else:
+            await message.answer("Вы не были подписаны на уведомления.")
 
 # Запуск бота
 async def start_bot():
     logging.info("Запуск бота...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)  # Передаем bot в start_polling
-
-# Функция on_startup для импорта в main.py
-async def on_startup():
-    logging.info("Бот запущен и готов к работе!")
-    asyncio.create_task(send_notification())  # Запускаем функцию отправки уведомлений
