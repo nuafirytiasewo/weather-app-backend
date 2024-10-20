@@ -12,7 +12,7 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 
 engine = create_engine(
     DATABASE_URL,
-    echo=True,  # Установите в False в продакшене
+    echo=False,  # Отвечает за вывод логов
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
     )
 
@@ -26,13 +26,10 @@ Base = declarative_base()
 def get_db():
     db = SessionLocal()
     try:
-        print("getting db")
         yield db
         db.commit()
     except:
-        print("rolling back")
         db.rollback()
         raise
     finally:
-        print("closing db")
         db.close()

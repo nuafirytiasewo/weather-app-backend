@@ -9,13 +9,14 @@ import os
 from app.db.database import get_db
 import app.db.crud as crud
 from air_quality import get_city_by_coords, get_air_pollution_data, get_air_pollution_forecast
+import app.bot.messages as messages
 
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # Логирование
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 
 # Создание экземпляра бота
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -27,8 +28,7 @@ dp = Dispatcher(storage=storage)  # Передаем storage в диспетче
 # Хэндлер команды /start с параметрами
 @dp.message(Command("start"))
 async def start(message: Message):
-    logging.info(f"Получена команда /start от {message.from_user.id}")
-    logging.info(f"А что именно передалось {message.text}")
+    logging.info(f"[TELEGRAM BOT] /start от {message.from_user.id} message: {message.text}")
     
     # Проверяем, что текст команды содержит необходимые параметры
     if message.text and "lon" in message.text and "lat" in message.text:
@@ -37,7 +37,7 @@ async def start(message: Message):
             lon = message.text.split("lon")[1].split("lat")[0].strip()
             lat = message.text.split("lat")[1].strip()
 
-            lon = float(lon.replace("-", "."))  # Преобразуем строку в float
+            lon = float(lon.replace("-", "."))
             lat = float(lat.replace("-", "."))
 
             # Вместо геокодера по умолчанию город Астрахань - исправлено
@@ -60,18 +60,14 @@ async def start(message: Message):
                     
                 )
 
-            await message.answer(f"Спасибо за подписку на рассылку!\nГород: {city}\nКоординаты: {lon}, {lat}")
-
-        except ValueError as e:
-            logging.error(f"Ошибка: {e}")
-            await message.answer(f"Подписка уже существует. Ваши данные были обновлены.\nГород: {city}\nКоординаты: {lon}, {lat}")
+            await message.answer(messages.MESSAGE_SAVE_SUBSCRIPTION + f"{city}")
 
         except Exception as e:
             logging.error(f"Произошла ошибка: {e}")
-            await message.answer("Произошла ошибка при обработке координат. Пожалуйста, проверьте формат и попробуйте снова.")
+            await message.answer(messages.MESSAGE_START_ERROR)
     
     else:
-        await message.answer("Пожалуйста, укажите координаты в формате: /start lon36.19lat51.73")
+        await message.answer(messages.MESSAGE_COORDINATES_NOT_PROVIDED)
 
 # Функция отправки уведомлений
 async def send_notifications():
