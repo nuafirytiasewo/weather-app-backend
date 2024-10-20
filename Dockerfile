@@ -4,6 +4,12 @@ FROM python:3.12-slim
 # Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
 
+# Устанавливаем зависимости для работы с базой данных
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    python3-dev
+
 # Копируем файлы зависимостей в контейнер
 COPY requirements.txt .
 
